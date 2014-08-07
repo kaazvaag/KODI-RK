@@ -23,6 +23,7 @@
 #include "cores/AudioEngine/Utils/AERingBuffer.h"
 #include "android/activity/XBMCApp.h"
 #include "settings/Settings.h"
+#include "settings/AdvancedSettings.h"
 #if defined(HAS_LIBAMCODEC)
 #include "utils/AMLUtils.h"
 #endif
@@ -84,8 +85,8 @@ bool CAESinkAUDIOTRACK::Initialize(AEAudioFormat &format, std::string &device)
   m_lastFormat  = format;
   m_format      = format;
 
-  if (AE_IS_RAW(m_format.m_dataFormat))
-    m_passthrough = true;
+  if (AE_IS_RAW(m_format.m_dataFormat) && g_advancedSettings.m_libMediaPassThroughHack)
+    m_passthrough = true;    
   else
     m_passthrough = false;
 
@@ -94,7 +95,19 @@ bool CAESinkAUDIOTRACK::Initialize(AEAudioFormat &format, std::string &device)
     aml_set_audio_passthrough(m_passthrough);
 #endif
 
-  m_format.m_sampleRate     = CJNIAudioTrack::getNativeOutputSampleRate(CJNIAudioManager::STREAM_MUSIC);
+  // default to 44100, all android devices support it.
+  // then check if we can support the requested rate.
+  unsigned int sampleRate = 44100;
+  for (size_t i = 0; i < m_info.m_sampleRates.size(); i++)
+  {
+    if (m_format.m_sampleRate == m_info.m_sampleRates[i])
+    {
+      sampleRate = m_format.m_sampleRate;
+      break;
+    }
+  }
+  m_format.m_sampleRate = sampleRate;
+  
   m_format.m_dataFormat     = AE_FMT_S16LE;
   m_format.m_channelLayout  = m_info.m_channels;
   m_format.m_frameSize      = m_format.m_channelLayout.Count() *
@@ -103,10 +116,10 @@ bool CAESinkAUDIOTRACK::Initialize(AEAudioFormat &format, std::string &device)
                                                                 CJNIAudioFormat::CHANNEL_OUT_STEREO,
                                                                 CJNIAudioFormat::ENCODING_PCM_16BIT);
   m_sink_frameSize          = m_format.m_channelLayout.Count() *
-                              (CAEUtil::DataFormatToBits(AE_FMT_S16LE) / 8);
+                              (CAEUtil::DataFormatToBits(m_format.m_dataFormat) / 8);
   m_min_frames              = min_buffer_size / m_sink_frameSize;
   m_audiotrackbuffer_sec    = (double)m_min_frames / (double)m_format.m_sampleRate;
-  m_at_jni                  = new CJNIAudioTrack( CJNIAudioManager::STREAM_MUSIC,
+  m_at_jni                  = new CJNIAudioTrack( m_passthrough ? CJNIAudioManager::STREAM_VOICE_CALL : CJNIAudioManager::STREAM_MUSIC,
                                                   m_format.m_sampleRate,
                                                   CJNIAudioFormat::CHANNEL_OUT_STEREO,
                                                   CJNIAudioFormat::ENCODING_PCM_16BIT,
@@ -242,6 +255,7 @@ void CAESinkAUDIOTRACK::EnumerateDevicesEx(AEDeviceInfoList &list, bool force)
   m_info.m_channels += AE_CH_FL;
   m_info.m_channels += AE_CH_FR;
   m_info.m_sampleRates.push_back(CJNIAudioTrack::getNativeOutputSampleRate(CJNIAudioManager::STREAM_MUSIC));
+  m_info.m_sampleRates.push_back(48000);  // for passthrough
   m_info.m_dataFormats.push_back(AE_FMT_S16LE);
   m_info.m_dataFormats.push_back(AE_FMT_AC3);
   m_info.m_dataFormats.push_back(AE_FMT_DTS);
