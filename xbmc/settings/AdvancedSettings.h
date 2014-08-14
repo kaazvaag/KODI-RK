@@ -409,10 +409,10 @@ class CAdvancedSettings : public ISettingCallback, public ISettingsHandler
 
     CStdString m_userAgent;
 
-	#if defined(TARGET_ANDROID)
+   #if defined(TARGET_ANDROID)
      bool m_libMediaPassThroughHack; // Enables pass through with patched libmedia.so
-	#endif
-
+   #endif
+	
   private:
     void setExtraLogLevel(const std::vector<CVariant> &components);
 };
