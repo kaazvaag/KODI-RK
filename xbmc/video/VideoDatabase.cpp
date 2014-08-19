@@ -2866,7 +2866,7 @@ void CVideoDatabase::GetBookMarksForFile(const CStdString& strFilenameAndPath, V
 {
   try
   {
-    if (URIUtils::IsStack(strFilenameAndPath) && CFileItem(CStackDirectory::GetFirstStackedFile(strFilenameAndPath),false).IsDVDImage())
+    if (URIUtils::IsStack(strFilenameAndPath) && CFileItem(CStackDirectory::GetFirstStackedFile(strFilenameAndPath),false).IsDiscImage())
     {
       CStackDirectory dir;
       CFileItemList fileList;
@@ -3673,7 +3673,7 @@ bool CVideoDatabase::GetResumePoint(CVideoInfoTag& tag)
 
   try
   {
-    if (URIUtils::IsStack(tag.m_strFileNameAndPath) && CFileItem(CStackDirectory::GetFirstStackedFile(tag.m_strFileNameAndPath),false).IsDVDImage())
+    if (URIUtils::IsStack(tag.m_strFileNameAndPath) && CFileItem(CStackDirectory::GetFirstStackedFile(tag.m_strFileNameAndPath),false).IsDiscImage())
     {
       CStackDirectory dir;
       CFileItemList fileList;
@@ -5440,7 +5440,7 @@ bool CVideoDatabase::GetMusicVideoAlbumsNav(const CStdString& strBaseDir, CFileI
     extFilter.AppendJoin(PrepareSQL("join actors on actors.idActor = artistlinkmusicvideo.idArtist"));
     if (CProfilesManager::Get().GetMasterProfile().getLockMode() != LOCK_MODE_EVERYONE && !g_passwordManager.bMasterUser)
     {
-      extFilter.fields += " path.strPath";
+      extFilter.fields += ", path.strPath";
       extFilter.AppendJoin("join files on files.idFile = musicvideoview.idFile join path on path.idPath = files.idPath");
     }
 
@@ -5832,7 +5832,10 @@ bool CVideoDatabase::GetYearsNav(const CStdString& strBaseDir, CFileItemList& it
         extFilter.AppendGroup(PrepareSQL("movieview.c%02d", VIDEODB_ID_YEAR));
       }
       else if (idContent == VIDEODB_CONTENT_TVSHOWS)
+      {
         strSQL = PrepareSQL("select distinct tvshowview.c%02d from tvshowview", VIDEODB_ID_TV_PREMIERED);
+        extFilter.AppendGroup(PrepareSQL("tvshowview.c%02d", VIDEODB_ID_TV_PREMIERED));
+      }
       else if (idContent == VIDEODB_CONTENT_MUSICVIDEOS)
       {
         strSQL = PrepareSQL("select musicvideoview.c%02d, count(1), count(files.playCount) from musicvideoview ", VIDEODB_ID_MUSICVIDEO_YEAR);
