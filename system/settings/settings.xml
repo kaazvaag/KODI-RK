@@ -509,7 +509,9 @@
           <constraints>
             <options>
               <option label="36521">0</option> <!-- ASK     -->
-              <option label="36522">1</option> <!-- Preferred mode -->
+              <option label="36524">1</option> <!-- Preferred mode -->
+              <option label="36509">2</option> <!-- Monoscopic / 2D -->
+              <option label="36028">100</option> <!-- Ignore -->
             </options>
           </constraints>
           <control type="spinner" format="integer" delayed="true"/>
@@ -585,14 +587,6 @@
             </options>
           </constraints>
           <control type="spinner" format="integer" />
-        </setting>
-        <setting id="videoplayer.useframemtdec" type="boolean" parent="videoplayer.decodingmethod" label="13440" help="36423">
-          <dependencies>
-            <dependency type="enable" setting="videoplayer.decodingmethod" operator="is">0</dependency>
-          </dependencies>
-          <level>2</level>
-          <default>false</default>
-          <control type="toggle" />
         </setting>
         <setting id="videoplayer.useamcodec" type="boolean" label="13438" help="36422">
           <requirement>HAVE_AMCODEC</requirement>
@@ -728,8 +722,32 @@
           <default>false</default>
           <control type="toggle" />
         </setting>
+        <setting id="videoplayer.prefervaapirender" type="boolean" parent="videoplayer.usevaapi" label="13457" help="36433">
+          <requirement>HAVE_LIBVA</requirement>
+          <dependencies>
+            <dependency type="enable">
+              <and>
+                <condition setting="videoplayer.usevaapi" operator="is">true</condition>
+                <condition setting="videoplayer.decodingmethod" operator="is">1</condition>
+              </and>
+            </dependency>
+            <dependency type="visible" on="property" name="codecoptionvisible" setting="videoplayer.usevaapivc1" operator="is">true</dependency>
+          </dependencies>
+          <level>3</level>
+          <default>true</default>
+          <control type="toggle" />
+        </setting>
         <setting id="videoplayer.usedxva2" type="boolean" label="13427" help="36158">
           <requirement>HasDXVA2</requirement>
+          <dependencies>
+            <dependency type="enable" setting="videoplayer.decodingmethod" operator="is">1</dependency>
+          </dependencies>
+          <level>2</level>
+          <default>true</default>
+          <control type="toggle" />
+        </setting>
+        <setting id="videoplayer.useomxplayer" type="boolean" label="13458" help="13459">
+          <requirement>HAS_OMXPLAYER</requirement>
           <dependencies>
             <dependency type="enable" setting="videoplayer.decodingmethod" operator="is">1</dependency>
           </dependencies>
@@ -2269,10 +2287,13 @@
         </setting>
         <setting id="videoscreen.preferedstereoscopicmode" parent="videoscreen.stereoscopicmode" type="integer" label="36524" help="36540">
           <level>2</level>
-          <default>0</default>
+          <default>100</default> <!-- ENUM RENDER_STEREO_MODE_AUTO -->
           <constraints>
             <options>preferedstereoscopicviewmodes</options>
           </constraints>
+          <updates>
+            <update type="change" />
+          </updates>
           <control type="list" format="integer"/>
         </setting>
       </group>

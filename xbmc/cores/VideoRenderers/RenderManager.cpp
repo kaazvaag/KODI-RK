@@ -56,6 +56,10 @@
 #include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
 #include "../dvdplayer/DVDCodecs/DVDCodecUtils.h"
 
+#ifdef HAVE_LIBVA
+  #include "../dvdplayer/DVDCodecs/Video/VAAPI.h"
+#endif
+
 #define MAXPRESENTDELAY 0.500
 
 /* at any point we want an exclusive lock on rendermanager */
@@ -257,20 +261,14 @@ bool CXBMCRenderManager::Configure(unsigned int width, unsigned int height, unsi
     lock2.Enter();
     m_format = format;
 
-    int processor = m_pRenderer->GetProcessorSize();
-    if(processor > buffers)                          /* DXVA-HD returns processor size 6 */
-      m_QueueSize = 3;                               /* we need queue size of 3 to get future frames in the processor */
-    else if(processor)
-      m_QueueSize = buffers - processor + 1;         /* respect maximum refs */
-    else
-      m_QueueSize = m_pRenderer->GetMaxBufferSize(); /* no refs to data */
-
+    int renderbuffers = m_pRenderer->GetOptimalBufferSize();
+    m_QueueSize = std::min(buffers, renderbuffers);
     m_QueueSize = std::min(m_QueueSize, (int)m_pRenderer->GetMaxBufferSize());
     m_QueueSize = std::min(m_QueueSize, NUM_BUFFERS);
     if(m_QueueSize < 2)
     {
       m_QueueSize = 2;
-      CLog::Log(LOGWARNING, "CXBMCRenderManager::Configure - queue size too small (%d, %d, %d)", m_QueueSize, processor, buffers);
+      CLog::Log(LOGWARNING, "CXBMCRenderManager::Configure - queue size too small (%d, %d, %d)", m_QueueSize, renderbuffers, buffers);
     }
 
     m_pRenderer->SetBufferSize(m_QueueSize);
@@ -361,11 +359,16 @@ void CXBMCRenderManager::FrameMove()
     /* release all previous */
     for(std::deque<int>::iterator it = m_discard.begin(); it != m_discard.end(); )
     {
-      // TODO check for fence
-      m_pRenderer->ReleaseBuffer(*it);
-      m_overlays.Release(*it);
-      m_free.push_back(*it);
-      it = m_discard.erase(it);
+      // renderer may want to keep the frame for postprocessing
+      if (!m_pRenderer->NeedBufferForRef(*it))
+      {
+        m_pRenderer->ReleaseBuffer(*it);
+        m_overlays.Release(*it);
+        m_free.push_back(*it);
+        it = m_discard.erase(it);
+      }
+      else
+        ++it;
     }
   }
 }
@@ -852,10 +855,14 @@ void CXBMCRenderManager::UpdateResolution()
 }
 
 
-unsigned int CXBMCRenderManager::GetProcessorSize()
+unsigned int CXBMCRenderManager::GetOptimalBufferSize()
 {
   CSharedLock lock(m_sharedSection);
-  return std::max(4, NUM_BUFFERS);
+  if (!m_pRenderer)
+  {
+    CLog::Log(LOGERROR, "%s - renderer is NULL", __FUNCTION__);
+  }
+  return m_pRenderer->GetMaxBufferSize();
 }
 
 // Supported pixel formats, can be called before configure
@@ -922,7 +929,12 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic)
 #endif
 #ifdef HAVE_LIBVA
   else if(pic.format == RENDER_FMT_VAAPI)
-    m_pRenderer->AddProcessor(*pic.vaapi, index);
+    m_pRenderer->AddProcessor(pic.vaapi, index);
+  else if(pic.format == RENDER_FMT_VAAPINV12)
+  {
+    m_pRenderer->AddProcessor(pic.vaapi, index);
+    CDVDCodecUtils::CopyNV12Picture(&image, &pic.vaapi->DVDPic);
+  }
 #endif
 #ifdef HAS_LIBSTAGEFRIGHT
   else if(pic.format == RENDER_FMT_EGLIMG)
@@ -931,6 +943,10 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic)
 #if defined(TARGET_ANDROID)
   else if(pic.format == RENDER_FMT_MEDIACODEC)
     m_pRenderer->AddProcessor(pic.mediacodec, index);
+#endif
+#ifdef HAS_IMXVPU
+  else if(pic.format == RENDER_FMT_IMXMAP)
+    m_pRenderer->AddProcessor(pic.IMXBuffer, index);
 #endif
 
   m_pRenderer->ReleaseImage(index, false);
@@ -985,10 +1001,10 @@ EINTERLACEMETHOD CXBMCRenderManager::AutoInterlaceMethodInternal(EINTERLACEMETHO
   if (mInt == VS_INTERLACEMETHOD_NONE)
     return VS_INTERLACEMETHOD_NONE;
 
-  if(!m_pRenderer->Supports(mInt))
+  if(m_pRenderer && !m_pRenderer->Supports(mInt))
     mInt = VS_INTERLACEMETHOD_AUTO;
 
-  if (mInt == VS_INTERLACEMETHOD_AUTO)
+  if (m_pRenderer && mInt == VS_INTERLACEMETHOD_AUTO)
     return m_pRenderer->AutoInterlaceMethod();
 
   return mInt;

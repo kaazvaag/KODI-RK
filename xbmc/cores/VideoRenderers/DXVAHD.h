@@ -21,6 +21,7 @@
 
 #include "libavcodec/avcodec.h"
 #include "DVDCodecs/Video/DVDVideoCodecFFmpeg.h"
+#include "DVDCodecs/Video/DXVA.h"
 #include "guilib/D3DResource.h"
 #include "threads/Event.h"
 #include "DVDResource.h"
@@ -45,6 +46,8 @@ const DXVAHD_FILTER PROCAMP_FILTERS[] =
 
 const DWORD NUM_FILTERS = ARRAYSIZE(PROCAMP_FILTERS);
 
+typedef HRESULT (__stdcall *DXVAHDCreateVideoServicePtr)(IDirect3DDevice9Ex *pD3DDevice, const DXVAHD_CONTENT_DESC *pContentDesc, DXVAHD_DEVICE_USAGE Usage, PDXVAHDSW_Plugin pPlugin, IDXVAHD_Device **ppDevice);
+
 class CProcessorHD
   : public CProcessor
 {
@@ -56,9 +59,9 @@ public:
   virtual void           UnInit();
   virtual bool           Open(UINT width, UINT height, unsigned int flags, unsigned int format, unsigned int extended_format);
   virtual void           Close();
-  virtual REFERENCE_TIME Add(DVDVideoPicture* picture);
-  virtual bool           Render(CRect src, CRect dst, IDirect3DSurface9* target, const REFERENCE_TIME time, DWORD flags);
+  virtual bool           Render(CRect src, CRect dst, IDirect3DSurface9* target, IDirect3DSurface9 **source, DWORD flags, UINT frameIdx);
   virtual unsigned       Size() { if (m_pDXVAHD) return m_size; return 0; }
+  virtual unsigned       PastRefs() { return m_max_back_refs; }
 
   virtual void OnCreateDevice()  {}
   virtual void OnDestroyDevice() { CSingleLock lock(m_section); UnInit(); }
@@ -66,6 +69,7 @@ public:
   virtual void OnResetDevice()   { CSingleLock lock(m_section); Close(); }
 
 protected:
+  virtual bool LoadSymbols();
   virtual bool UpdateSize(const DXVA2_VideoDesc& dsc);
   virtual bool ReInit();
   virtual bool CreateSurfaces();
@@ -79,7 +83,6 @@ protected:
   unsigned int             m_width;
   unsigned int             m_height;
   D3DFORMAT                m_format;
-  REFERENCE_TIME           m_frame;
   unsigned int             m_flags;
   unsigned int             m_renderFormat;
 
@@ -90,15 +93,7 @@ protected:
   };
   ProcAmpInfo              m_Filters[NUM_FILTERS];
 
-  struct SFrame
-  {
-    IDirect3DSurface9*     pSurface;
-    CSurfaceContext*       context;
-    unsigned int           index;
-    unsigned               format;
-  };
-  typedef std::deque<SFrame> SFrames;
-  SFrames                  m_frames;
+  static DXVAHDCreateVideoServicePtr m_DXVAHDCreateVideoService;
 };
 
 };
